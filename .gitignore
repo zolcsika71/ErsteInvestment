@@ -163,5 +163,5 @@ cython_debug/
 #.idea/
 
 # Generated investment analysis report
-/DB/investment_analysis.json
-/DB/investment_analysis.xlsx
+/db/investment_analysis.json
+/results/investment_analysis.xlsx

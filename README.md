@@ -1,7 +1,7 @@
 # Erste Investment analysis
 
 The project imports `/project/model_portfolios_xls/*.xls` into
-`/project/DB/model_portfolio.sqlite`. Paths are derived from the folder that
+`/project/db/model_portfolio.sqlite`. Paths are derived from the folder that
 contains `main.py`, so the same code also works outside `/project`.
 
 ## Import
@@ -19,7 +19,7 @@ poetry run python main.py --analyze \
   --risk-profile balanced \
   --top 10 \
   --max-allocation 20 \
-  --analysis-output DB/investment_analysis.json
+  --analysis-output db/investment_analysis.json
 ```
 
 The analysis:
@@ -62,4 +62,25 @@ Convert the generated JSON report into a formatted, multi-sheet workbook:
 poetry run python export_analysis_excel.py
 ```
 
-The default output is `DB/investment_analysis.xlsx`.
+The default output is `results/investment_analysis.xlsx`.
+
+## Tests
+
+All tests are located in `tests/` and run with pytest:
+
+```bash
+poetry run pytest
+```
+
+## Code structure
+
+- `project_config.py` — shared project paths.
+- `excel_processing.py` — worksheet reading, validation, and translation.
+- `database_create.py` — SQLite schema and import transactions.
+- `investment_model.py` — data loading, forward labels, XGBoost, and ranking.
+- `portfolio_engine.py` — named-portfolio scoring and allocation optimization.
+- `openai_explainer.py` — optional structured OpenAI explanation.
+- `investment_analysis.py` — stable public facade and workflow orchestration.
+- `export_analysis_excel.py` — formatted JSON-to-Excel reporting.
+- `main.py` — command-line interface.
+- `tests/` — pytest test suite.

@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import re
-import unicodedata
 from numbers import Real
 from pathlib import Path
 from typing import Any, Final
 
 import pandas as pd
 from python_calamine import load_workbook
+
+from text_normalization import normalized_key
 
 
 TARGET_WORKSHEET: Final = "modell portfóliók"
@@ -99,11 +100,6 @@ MERGED_RANGE_PATTERN: Final = re.compile(
 )
 
 
-def normalized(value: Any) -> str:
-    """Return a trimmed, Unicode-normalized, case-insensitive lookup key."""
-    return unicodedata.normalize("NFC", str(value).strip()).casefold()
-
-
 def is_visible_sheet(metadata: Any) -> bool:
     """Return whether worksheet metadata describes a visible sheet."""
     return str(metadata.visible).endswith(".Visible")
@@ -159,7 +155,10 @@ def read_target_worksheet(file_path: Path) -> dict[str, pd.DataFrame]:
         ) from error
     with excel_file:
         for index, metadata in enumerate(workbook.sheets_metadata):
-            if not is_visible_sheet(metadata) or normalized(metadata.name) != TARGET_WORKSHEET:
+            if (
+                not is_visible_sheet(metadata)
+                or normalized_key(metadata.name) != TARGET_WORKSHEET
+            ):
                 continue
             sheet = workbook.get_sheet_by_index(index)
             frame = pd.read_excel(excel_file, sheet_name=metadata.name,
@@ -180,7 +179,7 @@ def translate_headers(headers: list[Any], file_name: str, sheet_name: str) -> li
     for index, header in enumerate(headers, start=1):
         if pd.isna(header) or not str(header).strip():
             raise ValueError(f"{file_name} / {sheet_name}: blank header in column {index}")
-        key = normalized(header)
+        key = normalized_key(header)
         if key not in HEADER_TRANSLATIONS:
             raise ValueError(
                 f"{file_name} / {sheet_name}: no English translation configured "
@@ -202,14 +201,14 @@ def translate_values(frame: pd.DataFrame) -> pd.DataFrame:
         if column_name not in frame.columns:
             continue
         english_values = {
-            normalized(value): value for value in translations.values()
+            normalized_key(value): value for value in translations.values()
         }
         invalid_values = INVALID_CATEGORY_VALUES.get(column_name, set())
 
         def translate(value: Any) -> Any:
             if value is None or pd.isna(value):
                 return value
-            key = normalized(value)
+            key = normalized_key(value)
             if key in translations:
                 return translations[key]
             if key in english_values:
@@ -238,20 +237,28 @@ def replace_numeric_zeros(frame: pd.DataFrame) -> pd.DataFrame:
     )
 
 
+def _validate_columns(
+    headers: list[str],
+    expected_columns: tuple[str, ...],
+    location: str,
+) -> None:
+    """Reject missing or unexpected worksheet columns."""
+    missing = [column for column in expected_columns if column not in headers]
+    extra = [column for column in headers if column not in expected_columns]
+    if missing or extra:
+        details = ([f"missing: {', '.join(missing)}"] if missing else []) + (
+            [f"extra: {', '.join(extra)}"] if extra else []
+        )
+        raise ValueError(f"{location}: column mismatch ({'; '.join(details)})")
+
+
 def prepare_rows(file_path: Path, sheet_name: str, frame: pd.DataFrame,
                  expected_columns: tuple[str, ...]) -> pd.DataFrame:
     """Validate headers and return normalized worksheet data rows."""
     if frame.empty:
         raise ValueError(f"{file_path.name} / {sheet_name}: worksheet is empty")
     headers = translate_headers(list(frame.iloc[0]), file_path.name, sheet_name)
-    missing = [column for column in expected_columns if column not in headers]
-    extra = [column for column in headers if column not in expected_columns]
-    if missing or extra:
-        details = ([f"missing: {', '.join(missing)}"] if missing else []) + (
-            [f"extra: {', '.join(extra)}"] if extra else [])
-        raise ValueError(
-            f"{file_path.name} / {sheet_name}: column mismatch ({'; '.join(details)})"
-        )
+    _validate_columns(headers, expected_columns, f"{file_path.name} / {sheet_name}")
     data = frame.iloc[1:].copy()
     data.columns = headers
     data = data.loc[:, list(expected_columns)]

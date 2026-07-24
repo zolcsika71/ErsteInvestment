@@ -5,15 +5,14 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
-from typing import Final
 
 from database_create import DatabaseError, import_file
 from investment_analysis import AnalysisError, run_analysis, write_report
+from project_config import DATABASE_PATH, INPUT_DIR, PROJECT_DIR
 
 
-PROJECT_DIR: Final = Path(__file__).resolve().parent
-DEFAULT_INPUT_DIR: Final = PROJECT_DIR / "model_portfolios_xls"
-DEFAULT_DATABASE: Final = PROJECT_DIR / "DB" / "model_portfolio.sqlite"
+DEFAULT_INPUT_DIR = INPUT_DIR
+DEFAULT_DATABASE = DATABASE_PATH
 
 
 def find_xls_files(input_dir: Path) -> list[Path]:

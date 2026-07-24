@@ -12,11 +12,11 @@ from openpyxl.formatting.rule import ColorScaleRule
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.table import Table, TableStyleInfo
+from project_config import ANALYSIS_JSON_PATH, ANALYSIS_XLSX_PATH
 
 
-PROJECT_DIR: Final = Path(__file__).resolve().parent
-DEFAULT_JSON: Final = PROJECT_DIR / "DB" / "investment_analysis.json"
-DEFAULT_XLSX: Final = PROJECT_DIR / "DB" / "investment_analysis.xlsx"
+DEFAULT_JSON: Final = ANALYSIS_JSON_PATH
+DEFAULT_XLSX: Final = ANALYSIS_XLSX_PATH
 HEADER_FILL: Final = PatternFill("solid", fgColor="1F4E78")
 SECTION_FILL: Final = PatternFill("solid", fgColor="D9EAF7")
 HEADER_FONT: Final = Font(color="FFFFFF", bold=True)

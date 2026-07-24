@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import re
 import sqlite3
-import unicodedata
 from contextlib import AbstractContextManager
 from datetime import datetime
 from pathlib import Path
@@ -12,6 +11,7 @@ from types import TracebackType
 from typing import Any, Final
 
 from excel_processing import prepare_rows, read_target_worksheet
+from text_normalization import normalized_key
 
 
 DATE_PATTERN: Final = re.compile(r"(\d{8})(?=\.[^.]+$)")
@@ -70,11 +70,6 @@ class DatabaseSession(AbstractContextManager[sqlite3.Connection]):
         return None
 
 
-def normalized(value: Any) -> str:
-    """Return a normalized lookup key."""
-    return unicodedata.normalize("NFC", str(value).strip()).casefold()
-
-
 def extract_date(file_path: Path) -> str:
     """Extract the filename date and return it as ``YYYY/MM/DD``."""
     match = DATE_PATTERN.search(file_path.name)
@@ -87,7 +82,7 @@ def extract_date(file_path: Path) -> str:
 def normalize_table_name(sheet_name: str) -> str:
     """Map a supported worksheet name to its private SQLite table name."""
     try:
-        return TABLE_NAME_OVERRIDES[normalized(sheet_name)]
+        return TABLE_NAME_OVERRIDES[normalized_key(sheet_name)]
     except KeyError as error:
         raise ValueError(f"No table mapping is configured for worksheet: {sheet_name!r}") from error
 
