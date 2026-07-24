@@ -38,12 +38,28 @@ trailing-return metrics are not substitutes for daily NAV history.
 ## Optional OpenAI explanation
 
 The LLM explains deterministic results; it cannot change ranks or allocations.
-Keep the key in an environment variable rather than source code:
+Add the key to the Git-ignored `.env` file in the project directory:
+
+```dotenv
+OPENAI_API_KEY=sk-your-key-here
+```
+
+Then run:
 
 ```bash
-export OPENAI_API_KEY="..."
 poetry run python main.py --analyze --explain
 ```
 
 The default explanatory model is `gpt-5.6-terra`. Override it with
-`--ai-model`. Without `--explain`, analysis is local and makes no API request.
+`--ai-model`. A key supplied by the shell or PyCharm takes precedence over
+`.env`. Without `--explain`, analysis is local and makes no API request.
+
+## Excel report
+
+Convert the generated JSON report into a formatted, multi-sheet workbook:
+
+```bash
+poetry run python export_analysis_excel.py
+```
+
+The default output is `DB/investment_analysis.xlsx`.

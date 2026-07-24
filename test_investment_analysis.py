@@ -1,17 +1,59 @@
 """Tests for time-aware investment analysis and allocation."""
 
 import unittest
+from unittest.mock import MagicMock, patch
 
+import httpx
 import numpy as np
+import openai
 import pandas as pd
 
 from investment_analysis import (
+    AnalysisError,
+    AnalysisReport,
+    ModelDiagnostics,
     add_forward_targets,
+    explain_with_openai,
     optimize_allocations,
 )
 
 
 class InvestmentAnalysisTests(unittest.TestCase):
+    def test_insufficient_openai_quota_becomes_clear_analysis_error(self) -> None:
+        report = AnalysisReport(
+            as_of_date="2026/07/06",
+            risk_profile="balanced",
+            diagnostics=ModelDiagnostics(
+                training_samples=100,
+                validation_samples=30,
+                validation_mae=0.05,
+                latest_date="2026/07/06",
+                target="test target",
+            ),
+            investments=[],
+            portfolios=[],
+            allocations=[],
+            warnings=[],
+        )
+        response = httpx.Response(
+            429,
+            request=httpx.Request("POST", "https://api.openai.com/v1/responses"),
+        )
+        quota_error = openai.RateLimitError(
+            "quota exceeded",
+            response=response,
+            body={"code": "insufficient_quota"},
+        )
+        client = MagicMock()
+        client.responses.parse.side_effect = quota_error
+
+        with (
+            patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"}),
+            patch("openai.OpenAI", return_value=client),
+            self.assertRaisesRegex(AnalysisError, "Add API credits"),
+        ):
+            explain_with_openai(report, "test-model")
+
     def test_forward_target_uses_nearest_snapshot_about_one_year_later(self) -> None:
         frame = pd.DataFrame({
             "Snapshot Date": pd.to_datetime([

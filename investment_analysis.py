@@ -16,6 +16,7 @@ from typing import Any, Final, Literal
 
 import numpy as np
 import pandas as pd
+from dotenv import load_dotenv
 from scipy.optimize import minimize
 import xgboost as xgb
 
@@ -43,6 +44,7 @@ CATEGORICAL_FEATURES: Final = (
     "Sustainability",
 )
 IDENTITY_COLUMNS: Final = ("Product", "ISIN")
+ENV_FILE: Final = Path(__file__).resolve().parent / ".env"
 RISK_AVERSION: Final = {
     "conservative": 1.50,
     "balanced": 0.55,
@@ -535,12 +537,16 @@ def explain_with_openai(
 ) -> dict[str, Any]:
     """Ask OpenAI to explain—but not change—the deterministic recommendation."""
     try:
+        import openai
         from openai import OpenAI
         from pydantic import BaseModel
     except ImportError as error:
         raise AnalysisError("Install the openai package to use --explain") from error
+    load_dotenv(ENV_FILE, override=False)
     if not os.environ.get("OPENAI_API_KEY"):
-        raise AnalysisError("OPENAI_API_KEY is required when --explain is used")
+        raise AnalysisError(
+            f"Set OPENAI_API_KEY in {ENV_FILE} when --explain is used"
+        )
 
     class Explanation(BaseModel):
         summary: str
@@ -552,26 +558,66 @@ def explain_with_openai(
 
     payload = report.to_dict()
     payload["explanation"] = None
-    response = OpenAI().responses.parse(
-        model=model,
-        reasoning={"effort": "medium"},
-        input=[
-            {
-                "role": "system",
-                "content": (
-                    "You are an investment-research explainer. Explain only the "
-                    "provided deterministic analysis. Do not change rankings, "
-                    "scores, or allocations. Do not promise future performance. "
-                    "State that this is research, not personalized financial advice."
-                ),
-            },
-            {
-                "role": "user",
-                "content": json.dumps(payload, ensure_ascii=False, allow_nan=False),
-            },
-        ],
-        text_format=Explanation,
-    )
+    try:
+        response = OpenAI().responses.parse(
+            model=model,
+            reasoning={"effort": "medium"},
+            input=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are an investment-research explainer. Explain only the "
+                        "provided deterministic analysis. Do not change rankings, "
+                        "scores, or allocations. Do not promise future performance. "
+                        "State that this is research, not personalized financial advice."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": json.dumps(
+                        payload,
+                        ensure_ascii=False,
+                        allow_nan=False,
+                    ),
+                },
+            ],
+            text_format=Explanation,
+        )
+    except openai.AuthenticationError as error:
+        raise AnalysisError(
+            "OpenAI rejected the API key. Check OPENAI_API_KEY in .env and "
+            "confirm that the key belongs to the intended API project."
+        ) from error
+    except openai.RateLimitError as error:
+        body = error.body if isinstance(error.body, dict) else {}
+        if body.get("code") == "insufficient_quota":
+            raise AnalysisError(
+                "OpenAI API quota is unavailable. Add API credits or raise the "
+                "organization/project spend limit, then retry. You can run "
+                "without --explain to generate the local quantitative report."
+            ) from error
+        raise AnalysisError(
+            "OpenAI rate limit reached. Wait briefly and retry, or run without "
+            "--explain."
+        ) from error
+    except openai.APITimeoutError as error:
+        raise AnalysisError(
+            "The OpenAI request timed out. Retry or run without --explain."
+        ) from error
+    except openai.APIConnectionError as error:
+        raise AnalysisError(
+            "Could not connect to OpenAI. Check the network connection or run "
+            "without --explain."
+        ) from error
+    except openai.APIStatusError as error:
+        raise AnalysisError(
+            f"OpenAI API request failed with HTTP {error.status_code}. "
+            "Check model access and project permissions, or run without --explain."
+        ) from error
+    except openai.APIError as error:
+        raise AnalysisError(
+            "OpenAI API request failed. Retry or run without --explain."
+        ) from error
     if response.output_parsed is None:
         raise AnalysisError("OpenAI returned no structured explanation")
     return response.output_parsed.model_dump()
