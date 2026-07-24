@@ -37,8 +37,7 @@ def load_portfolio_data(database_path: Path) -> pd.DataFrame:
         "Date", "Portfolio Name", "Product", "ISIN", "Allocation (%)",
         *NUMERIC_FEATURES, *CATEGORICAL_FEATURES,
     }
-    missing = sorted(required.difference(frame.columns))
-    if missing:
+    if missing := sorted(required.difference(frame.columns)):
         raise AnalysisError(f"Missing analysis columns: {', '.join(missing)}")
 
     frame["Snapshot Date"] = pd.to_datetime(frame["Date"], format="%Y/%m/%d")
@@ -59,7 +58,7 @@ def collapse_investment_snapshots(frame: pd.DataFrame) -> pd.DataFrame:
         "Sustainability": "first",
         "Allocation (%)": "mean",
     }
-    aggregations.update({column: "median" for column in NUMERIC_FEATURES})
+    aggregations |= {column: "median" for column in NUMERIC_FEATURES}
     return (
         frame.groupby(["Snapshot Date", "ISIN"], as_index=False, dropna=False)
         .agg(aggregations)

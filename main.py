@@ -20,11 +20,14 @@ def find_xls_files(input_dir: Path) -> list[Path]:
     input_dir = input_dir.expanduser().resolve()
     if not input_dir.is_dir():
         raise FileNotFoundError(f"Input directory not found: {input_dir}")
-    files = sorted(path for path in input_dir.iterdir()
-                   if path.is_file() and path.suffix.casefold() == ".xls")
-    if not files:
+    if files := sorted(
+        path
+        for path in input_dir.iterdir()
+        if path.is_file() and path.suffix.casefold() == ".xls"
+    ):
+        return files
+    else:
         raise FileNotFoundError(f"No .xls files found in: {input_dir}")
-    return files
 
 
 def import_directory(input_dir: Path, database_path: Path) -> tuple[int, int]:
