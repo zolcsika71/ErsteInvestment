@@ -20,6 +20,8 @@ def explain_with_openai(
     try:
         import openai
         from openai import OpenAI
+        from openai.types.responses import EasyInputMessageParam
+        from openai.types.shared_params import Reasoning
         from pydantic import BaseModel
     except ImportError as error:
         raise AnalysisError("Install the openai package to use --explain") from error
@@ -40,29 +42,31 @@ def explain_with_openai(
 
     payload = report.to_dict()
     payload["explanation"] = None
+    reasoning: Reasoning = {"effort": "medium"}
+    messages: list[EasyInputMessageParam] = [
+        {
+            "role": "system",
+            "content": (
+                "Explain only the provided deterministic investment "
+                "analysis. Do not change rankings, scores, or allocations. "
+                "Do not promise future performance. State that this is "
+                "research, not personalized financial advice."
+            ),
+        },
+        {
+            "role": "user",
+            "content": json.dumps(
+                payload,
+                ensure_ascii=False,
+                allow_nan=False,
+            ),
+        },
+    ]
     try:
         response = OpenAI().responses.parse(
             model=model,
-            reasoning={"effort": "medium"},
-            input=[
-                {
-                    "role": "system",
-                    "content": (
-                        "Explain only the provided deterministic investment "
-                        "analysis. Do not change rankings, scores, or allocations. "
-                        "Do not promise future performance. State that this is "
-                        "research, not personalized financial advice."
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": json.dumps(
-                        payload,
-                        ensure_ascii=False,
-                        allow_nan=False,
-                    ),
-                },
-            ],
+            reasoning=reasoning,
+            input=messages,
             text_format=Explanation,
         )
     except openai.AuthenticationError as error:
