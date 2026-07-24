@@ -3,7 +3,9 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
+# noinspection PyPackageRequirements
 import httpx
+# noinspection PyPackageRequirements
 import numpy as np
 import openai
 import pandas as pd

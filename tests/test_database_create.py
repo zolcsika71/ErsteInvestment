@@ -117,13 +117,14 @@ class DatabaseCreateTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 with DatabaseSession(path) as connection:
                     connection.execute("CREATE TABLE sample (value TEXT)")
+                    # noinspection SqlResolve
                     connection.execute("INSERT INTO sample VALUES ('not committed')")
                     raise RuntimeError("stop")
             with closing(sqlite3.connect(path)) as connection:
-                table = connection.execute(
+                if connection.execute(
                     "SELECT name FROM sqlite_master WHERE name = 'sample'"
-                ).fetchone()
-                if table:
+                ).fetchone() is not None:
+                    # noinspection SqlResolve
                     self.assertEqual(connection.execute("SELECT * FROM sample").fetchall(), [])
 
     def test_rebuild_removes_database_file(self) -> None:
