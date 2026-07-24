@@ -9,7 +9,11 @@ requires-python = ">=3.13"
 dependencies = [
     "argparse (==1.4.0)",
     "pandas (==3.0.4)",
-    "python-calamine (>=0.3.0)"
+    "python-calamine (>=0.3.0)",
+    "xlrd (>=2.0.2,<3.0.0)",
+    "scipy (==1.18.0)",
+    "xgboost (==3.3.0)",
+    "openai (==2.48.0)"
 ]
 
 [tool.poetry]

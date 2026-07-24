@@ -100,21 +100,6 @@ def _sql_type(column_name: str) -> str:
     return "TEXT" if column_name in TEXT_COLUMNS else "REAL"
 
 
-def create_import_schema(connection: sqlite3.Connection) -> None:
-    """Create the import tracking table when absent."""
-    connection.execute(
-        '''CREATE TABLE IF NOT EXISTS import_batches (
-            "Date" TEXT PRIMARY KEY
-                CHECK (
-                    length("Date") = 10
-                    AND "Date" GLOB '[0-9][0-9][0-9][0-9]/[0-9][0-9]/[0-9][0-9]'
-                ),
-            source_file TEXT NOT NULL,
-            imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-        )'''
-    )
-
-
 def table_columns(connection: sqlite3.Connection, table_name: str) -> list[str]:
     """Return SQLite table columns in order."""
     rows = connection.execute(
@@ -140,9 +125,11 @@ def ensure_data_table(connection: sqlite3.Connection, table_name: str,
 
 
 def date_exists(connection: sqlite3.Connection, import_date: str) -> bool:
-    """Return whether a dated workbook was already imported."""
+    """Return whether portfolio rows already exist for a workbook date."""
+    if not table_columns(connection, "model_portfolios"):
+        return False
     return connection.execute(
-        'SELECT 1 FROM import_batches WHERE "Date" = ? LIMIT 1', (import_date,)
+        'SELECT 1 FROM model_portfolios WHERE "Date" = ? LIMIT 1', (import_date,)
     ).fetchone() is not None
 
 
@@ -156,15 +143,10 @@ def import_file(file_path: Path, database_path: Path) -> bool:
     database_path.parent.mkdir(parents=True, exist_ok=True)
     try:
         with DatabaseSession(database_path) as connection:
-            create_import_schema(connection)
             if date_exists(connection, import_date):
                 print(f"Skipped: Date {import_date} already exists in {database_path}")
                 return False
             worksheets = read_target_worksheet(file_path)
-            connection.execute(
-                'INSERT INTO import_batches ("Date", source_file) VALUES (?, ?)',
-                (import_date, file_path.name),
-            )
             row_count = 0
             for sheet_name, worksheet in worksheets.items():
                 table_name = normalize_table_name(sheet_name)
