@@ -8,7 +8,7 @@ import numpy as np
 import openai
 import pandas as pd
 
-from investment_analysis import (
+from analysis import (
     AnalysisError,
     AnalysisReport,
     ModelDiagnostics,

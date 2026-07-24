@@ -6,8 +6,8 @@ import argparse
 import sys
 from pathlib import Path
 
-from database_create import DatabaseError, import_file
-from investment_analysis import AnalysisError, run_analysis, write_report
+from db_creation import DatabaseError, import_file
+from analysis import AnalysisError, run_analysis, write_report
 from project_config import DATABASE_PATH, INPUT_DIR, PROJECT_DIR
 
 

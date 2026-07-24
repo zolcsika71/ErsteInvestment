@@ -75,12 +75,9 @@ poetry run pytest
 ## Code structure
 
 - `project_config.py` — shared project paths.
-- `excel_processing.py` — worksheet reading, validation, and translation.
-- `database_create.py` — SQLite schema and import transactions.
-- `investment_model.py` — data loading, forward labels, XGBoost, and ranking.
-- `portfolio_engine.py` — named-portfolio scoring and allocation optimization.
-- `openai_explainer.py` — optional structured OpenAI explanation.
-- `investment_analysis.py` — stable public facade and workflow orchestration.
+- `db_creation/` — worksheet processing, translations, and SQLite imports.
+- `analysis/` — model training, portfolio optimization, OpenAI explanation,
+  shared result types, and workflow orchestration.
 - `export_analysis_excel.py` — formatted JSON-to-Excel reporting.
 - `main.py` — command-line interface.
 - `tests/` — pytest test suite.

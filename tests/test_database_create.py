@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from database_create import (
+from db_creation.database_create import (
     DatabaseSession,
     MODEL_PORTFOLIOS_COLUMNS,
     date_exists,
@@ -17,8 +17,8 @@ from database_create import (
     table_columns,
 )
 from main import DEFAULT_DATABASE, DEFAULT_INPUT_DIR, PROJECT_DIR, rebuild_database
-from excel_processing import replace_numeric_zeros, translate_values
-from text_normalization import normalized_key
+from db_creation.excel_processing import replace_numeric_zeros, translate_values
+from db_creation.text_normalization import normalized_key
 
 
 class DatabaseCreateTests(unittest.TestCase):
