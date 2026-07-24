@@ -1,0 +1,41 @@
+"""Public interface for investment analysis."""
+
+from .service import (
+    AllocationRecommendation,
+    AnalysisError,
+    AnalysisReport,
+    InvestmentRecommendation,
+    ModelDiagnostics,
+    PortfolioRecommendation,
+    RiskProfile,
+    add_forward_targets,
+    collapse_investment_snapshots,
+    explain_with_openai,
+    load_portfolio_data,
+    optimize_allocations,
+    rank_investments,
+    rank_portfolios,
+    run_analysis,
+    train_and_predict,
+    write_report,
+)
+
+__all__ = [
+    "AllocationRecommendation",
+    "AnalysisError",
+    "AnalysisReport",
+    "InvestmentRecommendation",
+    "ModelDiagnostics",
+    "PortfolioRecommendation",
+    "RiskProfile",
+    "add_forward_targets",
+    "collapse_investment_snapshots",
+    "explain_with_openai",
+    "load_portfolio_data",
+    "optimize_allocations",
+    "rank_investments",
+    "rank_portfolios",
+    "run_analysis",
+    "train_and_predict",
+    "write_report",
+]
