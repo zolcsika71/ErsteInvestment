@@ -1,11 +1,11 @@
 """Public facade for investment ranking and portfolio allocation.
 
-The implementation is split by responsibility:
+Responsibility splits the implementation:
 
-- :mod:`analysis.model` loads data, engineers features, and predicts returns.
-- :mod:`analysis.portfolio` ranks portfolios and optimizes allocations.
-- :mod:`analysis.openai_explainer` optionally explains deterministic results.
-- :mod:`analysis.types` owns shared configuration and result types.
+-:mod:`analysis.model` loads data, engineers features, and predicts returns.
+-:mod:`analysis.portfolio` ranks portfolios and optimizes allocations.
+-:mod:`analysis.openai_explainer` optionally explains deterministic results.
+-:mod:`analysis.types` owns shared configuration and result types.
 
 Imports from this module remain supported for backward compatibility.
 """

@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import math
 from dataclasses import asdict
-from typing import Any
+from typing import TypedDict
 
+# noinspection PyPackageRequirements
 import numpy as np
 import pandas as pd
-from scipy.optimize import minimize
+from scipy.optimize import LinearConstraint, minimize
 
 from .types import (
     ASSET_CLASS_CAPS,
@@ -20,6 +21,12 @@ from .types import (
     PortfolioRecommendation,
     RiskProfile,
 )
+
+
+# noinspection SpellCheckingInspection
+class _SlsqpOptions(TypedDict):
+    ftol: float
+    maxiter: int
 
 
 def rank_portfolios(
@@ -68,17 +75,19 @@ def rank_portfolios(
 
 def _return_covariance(
     snapshots: pd.DataFrame,
-    candidate_isins: list[str],
+    candidate_identifiers: list[str],
 ) -> np.ndarray:
-    history = snapshots[snapshots["ISIN"].isin(candidate_isins)].pivot_table(
+    history = snapshots[
+        snapshots["ISIN"].isin(candidate_identifiers)
+    ].pivot_table(
         index="Snapshot Date",
         columns="ISIN",
         values="1 Year",
         aggfunc="median",
     )
     covariance = history.diff().cov(min_periods=3).reindex(
-        index=candidate_isins,
-        columns=candidate_isins,
+        index=candidate_identifiers,
+        columns=candidate_identifiers,
     )
     fallback = float(np.nanmedian(np.diag(covariance.to_numpy(dtype=float))))
     if not np.isfinite(fallback) or fallback <= 0:
@@ -120,9 +129,10 @@ def _select_candidates(
 def _allocation_constraints(
     candidates: pd.DataFrame,
     risk_profile: RiskProfile,
-) -> list[dict[str, Any]]:
-    constraints: list[dict[str, Any]] = [
-        {"type": "eq", "fun": lambda weights: weights.sum() - 1.0},
+) -> list[LinearConstraint]:
+    candidate_count = len(candidates)
+    constraints = [
+        LinearConstraint(np.ones(candidate_count), lb=1.0, ub=1.0),
     ]
     asset_caps = {
         asset_class: ASSET_CLASS_CAPS[risk_profile].get(
@@ -132,26 +142,30 @@ def _allocation_constraints(
         for asset_class in candidates["Asset Class"].dropna().unique()
     }
     if len(asset_caps) > 1 and sum(asset_caps.values()) >= 1:
-        for asset_class, cap in asset_caps.items():
-            indexes = np.flatnonzero(
+        for asset_class, asset_cap in asset_caps.items():
+            positions = np.flatnonzero(
                 candidates["Asset Class"].to_numpy() == asset_class
             )
-            constraints.append({
-                "type": "ineq",
-                "fun": lambda weights, indexes=indexes, cap=cap: (
-                    cap - weights[indexes].sum()
-                ),
-            })
+            coefficients = np.zeros(candidate_count)
+            coefficients[positions] = 1.0
+            constraints.append(
+                LinearConstraint(coefficients, lb=-np.inf, ub=asset_cap)
+            )
     currencies = candidates["Currency"].dropna().unique()
     if len(currencies) > 1 and len(currencies) * DEFAULT_CURRENCY_CAP >= 1:
         for currency in currencies:
-            indexes = np.flatnonzero(candidates["Currency"].to_numpy() == currency)
-            constraints.append({
-                "type": "ineq",
-                "fun": lambda weights, indexes=indexes: (
-                    DEFAULT_CURRENCY_CAP - weights[indexes].sum()
-                ),
-            })
+            positions = np.flatnonzero(
+                candidates["Currency"].to_numpy() == currency
+            )
+            coefficients = np.zeros(candidate_count)
+            coefficients[positions] = 1.0
+            constraints.append(
+                LinearConstraint(
+                    coefficients,
+                    lb=-np.inf,
+                    ub=DEFAULT_CURRENCY_CAP,
+                )
+            )
     return constraints
 
 
@@ -174,20 +188,32 @@ def optimize_allocations(
     )
     risk_aversion = RISK_AVERSION[risk_profile] * 10.0
 
-    def objective(weights: np.ndarray) -> float:
-        return (
-            -float(weights @ returns)
-            + risk_aversion * float(weights @ covariance @ weights)
-            + 0.02 * float(weights @ weights)
+    def objective(allocation: np.ndarray) -> float:
+        return float(
+            -float(allocation @ returns)
+            + risk_aversion * float(allocation @ covariance @ allocation)
+            + 0.02 * float(allocation @ allocation)
         )
 
+    initial_allocation: np.ndarray = np.full(
+        len(candidates),
+        1.0 / len(candidates),
+        dtype=np.float64,
+    )
+    bounds: list[tuple[float, float]] = [
+        (0.0, maximum_allocation)
+    ] * len(candidates)
+    # noinspection SpellCheckingInspection
+    options: _SlsqpOptions = {"ftol": 1e-12, "maxiter": 1_000}
+    # PyCharm cannot resolve the generic minimized overload from scipy-stubs.
+    # noinspection PyTypeChecker
     result = minimize(
         objective,
-        np.full(len(candidates), 1 / len(candidates)),
+        initial_allocation,
         method="SLSQP",
-        bounds=[(0.0, maximum_allocation)] * len(candidates),
+        bounds=bounds,
         constraints=_allocation_constraints(candidates, risk_profile),
-        options={"ftol": 1e-12, "maxiter": 1_000},
+        options=options,
     )
     if not result.success:
         raise AnalysisError(f"Allocation optimization failed: {result.message}")

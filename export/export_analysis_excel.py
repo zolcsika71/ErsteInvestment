@@ -11,6 +11,7 @@ from openpyxl import Workbook
 from openpyxl.formatting.rule import ColorScaleRule
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.worksheet import Worksheet
 from openpyxl.worksheet.table import Table, TableStyleInfo
 from project_config import ANALYSIS_JSON_PATH, ANALYSIS_XLSX_PATH
 
@@ -47,26 +48,40 @@ def _load_report(json_path: Path) -> dict[str, Any]:
     return report
 
 
-def _style_header(worksheet: Any, row: int = 1) -> None:
+def _create_worksheet(workbook: Workbook, title: str) -> Worksheet:
+    worksheet = workbook.create_sheet(title)
+    if not isinstance(worksheet, Worksheet):
+        raise ExcelExportError(f"Could not create worksheet: {title}")
+    return worksheet
+
+
+def _style_header(worksheet: Worksheet, row: int = 1) -> None:
     for cell in worksheet[row]:
         cell.fill = HEADER_FILL
         cell.font = HEADER_FONT
         cell.alignment = Alignment(horizontal="center", vertical="center")
 
 
-def _fit_columns(worksheet: Any, maximum: int = 55) -> None:
+def _value_width(value: object) -> int:
+    if isinstance(value, str):
+        return len(value)
+    if isinstance(value, bool):
+        return len("True") if value else len("False")
+    if isinstance(value, (int, float)):
+        return len(format(value))
+    return 0
+
+
+def _fit_columns(worksheet: Worksheet, maximum: int = 55) -> None:
     for column_index, cells in enumerate(worksheet.columns, start=1):
-        width = max(
-            len(str(cell.value)) if cell.value is not None else 0
-            for cell in cells
-        )
+        width = max(_value_width(cell.value) for cell in cells)
         worksheet.column_dimensions[get_column_letter(column_index)].width = min(
             max(width + 2, 11),
             maximum,
         )
 
 
-def _add_table(worksheet: Any, name: str) -> None:
+def _add_table(worksheet: Worksheet, name: str) -> None:
     if worksheet.max_row < 2:
         return
     end = worksheet.cell(worksheet.max_row, worksheet.max_column).coordinate
@@ -90,7 +105,7 @@ def _write_records(
     whole_percentages: set[str] | None = None,
     color_scale_columns: set[str] | None = None,
 ) -> None:
-    worksheet = workbook.create_sheet(sheet_name)
+    worksheet = _create_worksheet(workbook, sheet_name)
     if not records:
         worksheet.append(["Status"])
         worksheet.append(["No data available"])
@@ -115,7 +130,7 @@ def _write_records(
                 cell.value /= 100
                 cell.number_format = "0.00%"
         if key in color_scale_columns:
-            letter = worksheet.cell(1, column_index).column_letter
+            letter = get_column_letter(column_index)
             worksheet.conditional_formatting.add(
                 f"{letter}2:{letter}{worksheet.max_row}",
                 ColorScaleRule(
@@ -137,6 +152,8 @@ def _write_records(
 
 def _write_summary(workbook: Workbook, report: dict[str, Any]) -> None:
     worksheet = workbook.active
+    if not isinstance(worksheet, Worksheet):
+        raise ExcelExportError("Workbook has no active worksheet")
     worksheet.title = "Summary"
     worksheet.append(["Investment Analysis Report", None])
     worksheet.merge_cells("A1:B1")
@@ -164,7 +181,7 @@ def _write_summary(workbook: Workbook, report: dict[str, Any]) -> None:
 
 
 def _write_warnings(workbook: Workbook, warnings: list[str]) -> None:
-    worksheet = workbook.create_sheet("Warnings")
+    worksheet = _create_worksheet(workbook, "Warnings")
     worksheet.append(["#", "Warning / Limitation"])
     for index, warning in enumerate(warnings, start=1):
         worksheet.append([index, warning])
@@ -180,7 +197,7 @@ def _write_explanation(
     workbook: Workbook,
     explanation: dict[str, Any] | None,
 ) -> None:
-    worksheet = workbook.create_sheet("AI Explanation")
+    worksheet = _create_worksheet(workbook, "AI Explanation")
     worksheet.append(["Section", "Content"])
     if not explanation:
         worksheet.append([
@@ -258,7 +275,7 @@ def main() -> int:
     arguments = parse_arguments()
     try:
         output = export_analysis_to_excel(arguments.json_path, arguments.xlsx_path)
-    except (FileNotFoundError, ExcelExportError, OSError, ValueError) as error:
+    except (ExcelExportError, OSError, ValueError) as error:
         print(f"Error: {error}")
         return 1
     print(f"Created Excel report: {output}")

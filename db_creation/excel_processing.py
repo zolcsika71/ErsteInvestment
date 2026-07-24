@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from numbers import Real
 from pathlib import Path
 from typing import Any, Final
@@ -98,6 +99,11 @@ INVALID_CATEGORY_VALUES: Final = {
 MERGED_RANGE_PATTERN: Final = re.compile(
     r"^\$?([A-Z]+)\$?(\d+):\$?([A-Z]+)\$?(\d+)$"
 )
+type MergedRange = (
+    str
+    | tuple[int, int, int, int]
+    | tuple[tuple[int, int], tuple[int, int]]
+)
 
 
 def is_visible_sheet(metadata: Any) -> bool:
@@ -113,7 +119,7 @@ def column_label_to_index(label: str) -> int:
     return index - 1
 
 
-def parse_merged_range(range_value: Any) -> tuple[int, int, int, int]:
+def parse_merged_range(range_value: MergedRange) -> tuple[int, int, int, int]:
     """Parse a merged-cell range into zero-based boundaries."""
     if isinstance(range_value, str):
         match = MERGED_RANGE_PATTERN.match(range_value.upper())
@@ -122,12 +128,24 @@ def parse_merged_range(range_value: Any) -> tuple[int, int, int, int]:
         start_col, start_row, end_col, end_row = match.groups()
         return (int(start_row) - 1, column_label_to_index(start_col),
                 int(end_row) - 1, column_label_to_index(end_col))
-    if isinstance(range_value, (tuple, list)) and len(range_value) == 4:
-        return tuple(int(value) for value in range_value)  # type: ignore[return-value]
+    if len(range_value) == 4:
+        start_row, start_col, end_row, end_col = range_value
+        return (
+            int(start_row),
+            int(start_col),
+            int(end_row),
+            int(end_col),
+        )
+    if len(range_value) == 2:
+        (start_row, start_col), (end_row, end_col) = range_value
+        return start_row, start_col, end_row, end_col
     raise ValueError(f"Unsupported merged-cell range: {range_value!r}")
 
 
-def fill_merged_cells(frame: pd.DataFrame, merged_ranges: list[Any]) -> pd.DataFrame:
+def fill_merged_cells(
+    frame: pd.DataFrame,
+    merged_ranges: Sequence[MergedRange] | None,
+) -> pd.DataFrame:
     """Repeat each merged range's top-left value across that range."""
     if not merged_ranges:
         return frame
@@ -186,8 +204,9 @@ def translate_headers(headers: list[Any], file_name: str, sheet_name: str) -> li
                 f"for header {header!r} in column {index}"
             )
         translated.append(HEADER_TRANSLATIONS[key])
-    duplicates = sorted({item for item in translated if translated.count(item) > 1})
-    if duplicates:
+    if duplicates := sorted(
+        {item for item in translated if translated.count(item) > 1}
+    ):
         raise ValueError(
             f"{file_name} / {sheet_name}: duplicate translated headers: {', '.join(duplicates)}"
         )

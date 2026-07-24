@@ -8,13 +8,14 @@ from contextlib import AbstractContextManager
 from datetime import datetime
 from pathlib import Path
 from types import TracebackType
-from typing import Any, Final
+from typing import Final
 
 from .excel_processing import prepare_rows, read_target_worksheet
 from .text_normalization import normalized_key
 
 
 DATE_PATTERN: Final = re.compile(r"(\d{8})(?=\.[^.]+$)")
+# noinspection SpellCheckingInspection
 TABLE_NAME_OVERRIDES: Final = {
     "modell portfóliók": "model_portfolios",
     "model portfolios": "model_portfolios",
@@ -41,7 +42,7 @@ class DatabaseError(Exception):
 
 
 class DatabaseSession(AbstractContextManager[sqlite3.Connection]):
-    """Own a SQLite connection and its commit/rollback lifecycle."""
+    """Own the SQLite connection and its commit/rollback lifecycle."""
 
     def __init__(self, database_path: Path) -> None:
         self.database_path = database_path
@@ -49,10 +50,11 @@ class DatabaseSession(AbstractContextManager[sqlite3.Connection]):
 
     def __enter__(self) -> sqlite3.Connection:
         try:
-            self.connection = sqlite3.connect(self.database_path)
+            connection = sqlite3.connect(self.database_path)
         except sqlite3.Error as error:
             raise DatabaseError(f"Could not open database: {self.database_path}") from error
-        return self.connection
+        self.connection = connection
+        return connection
 
     def __exit__(self, error_type: type[BaseException] | None,
                  error: BaseException | None,
@@ -72,9 +74,10 @@ class DatabaseSession(AbstractContextManager[sqlite3.Connection]):
 
 def extract_date(file_path: Path) -> str:
     """Extract the filename date and return it as ``YYYY/MM/DD``."""
-    match = DATE_PATTERN.search(file_path.name)
-    if match is None:
-        raise ValueError(f"Filename does not end in an 8-digit date: {file_path.name}")
+    if (match := DATE_PATTERN.search(file_path.name)) is None:
+        raise ValueError(
+            f"Filename does not end in an eight-digit date: {file_path.name}"
+        )
     parsed_date = datetime.strptime(match.group(1), "%Y%m%d")
     return parsed_date.strftime("%Y/%m/%d")
 
@@ -106,8 +109,7 @@ def table_columns(connection: sqlite3.Connection, table_name: str) -> list[str]:
 def ensure_data_table(connection: sqlite3.Connection, table_name: str,
                       columns: tuple[str, ...]) -> None:
     """Create a data table or reject an incompatible existing schema."""
-    existing = table_columns(connection, table_name)
-    if existing:
+    if existing := table_columns(connection, table_name):
         if existing != list(columns):
             raise ValueError(
                 f"Existing table {table_name!r} has incompatible columns. Run with --rebuild."
@@ -123,6 +125,8 @@ def date_exists(connection: sqlite3.Connection, import_date: str) -> bool:
     """Return whether portfolio rows already exist for a workbook date."""
     if not table_columns(connection, "model_portfolios"):
         return False
+    # The table is created dynamically by ensure_data_table.
+    # noinspection SqlResolve
     return connection.execute(
         'SELECT 1 FROM model_portfolios WHERE "Date" = ? LIMIT 1', (import_date,)
     ).fetchone() is not None
