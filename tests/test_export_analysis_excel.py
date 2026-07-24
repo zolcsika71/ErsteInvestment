@@ -7,7 +7,7 @@ from pathlib import Path
 
 from openpyxl import load_workbook
 
-from export_analysis_excel import export_analysis_to_excel
+from export.export_analysis_excel import export_analysis_to_excel
 
 
 class ExcelExportTests(unittest.TestCase):
