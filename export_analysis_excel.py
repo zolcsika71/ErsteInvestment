@@ -42,8 +42,7 @@ def _load_report(json_path: Path) -> dict[str, Any]:
         "as_of_date", "risk_profile", "diagnostics", "investments",
         "portfolios", "allocations", "warnings", "explanation",
     }
-    missing = sorted(required.difference(report))
-    if missing:
+    if missing := sorted(required.difference(report)):
         raise ExcelExportError(f"Analysis JSON is missing: {', '.join(missing)}")
     return report
 
