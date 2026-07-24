@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from numbers import Real
 from pathlib import Path
 from typing import Any, Final
 
@@ -40,18 +41,26 @@ VALUE_TRANSLATIONS: Final = {
     "Asset Class": {
         "alternatív": "Alternative",
         "kötvény": "Bond",
+        "kötvény - befektetési kategória": "Investment Grade Bond",
         "kötvény-befektetési kategória": "Investment Grade Bond",
+        "kötvény - magas hozamú": "High Yield Bond",
         "kötvény-magas hozamú": "High Yield Bond",
+        "kötvény-rugalmas": "Flexible Bond",
+        "pénzpiac": "Money Market",
         "pénzpiaci": "Money Market",
         "részvény": "Equity",
     },
     "Sub-Asset Class": {
         "abszolút hozamú": "Absolute Return",
+        "amerikai dollár": "USD",
         "eur": "EUR",
+        "euro": "EUR",
         "európa": "Europe",
         "európa-vállalatok": "Europe-Corporates",
+        "európai vállalatok": "Europe-Corporates",
         "fejl?d? piacok": "Emerging Markets",
         "globál": "Global",
+        "globál állampapír": "Global-Government Bond",
         "globál-állampapír": "Global-Government Bond",
         "hu-állampapír": "Hungary-Government Bond",
         "huf": "HUF",
@@ -59,11 +68,14 @@ VALUE_TRANSLATIONS: Final = {
         "kötvény - magyar állampapírok": "Bond - Hungarian Government Bonds",
         "közép-kelet európai állampapír":
             "Central and Eastern European Government Bond",
+        "magyar forint": "HUF",
+        "magyar állampapírok": "Hungarian Government Bonds",
         "nyersanyag": "Commodities",
         "részvény - fejl?d? piacok": "Equity - Emerging Markets",
         "usd": "USD",
         "észak-amerika": "North America",
         "észak-amerika-állampapír": "North America-Government Bond",
+        "észak-amerikai állampapír": "North America-Government Bond",
     },
     "Currency Risk": {
         "fedezve": "Hedged",
@@ -71,9 +83,15 @@ VALUE_TRANSLATIONS: Final = {
         "részben fedezve": "Partially Hedged",
     },
     "Sustainability": {
+        "0: nem minősített": "0: Not Rated",
         "1: esg-minimum standard": "1: ESG-Minimum Standard",
         "2: esg-plusz": "2: ESG-Plus",
+        "3: esg-impact": "3: ESG-Impact",
     },
+}
+
+INVALID_CATEGORY_VALUES: Final = {
+    "Currency Risk": {"2", "3", "4", "value!"},
 }
 
 MERGED_RANGE_PATTERN: Final = re.compile(
@@ -178,19 +196,46 @@ def translate_headers(headers: list[Any], file_name: str, sheet_name: str) -> li
 
 
 def translate_values(frame: pd.DataFrame) -> pd.DataFrame:
-    """Translate recognized categorical worksheet values into English."""
+    """Translate categorical values and reject unknown non-English categories."""
     frame = frame.copy()
     for column_name, translations in VALUE_TRANSLATIONS.items():
         if column_name not in frame.columns:
             continue
-        frame[column_name] = frame[column_name].map(
-            lambda value: (
-                translations.get(normalized(value), value)
-                if value is not None and not pd.isna(value)
-                else value
+        english_values = {
+            normalized(value): value for value in translations.values()
+        }
+        invalid_values = INVALID_CATEGORY_VALUES.get(column_name, set())
+
+        def translate(value: Any) -> Any:
+            if value is None or pd.isna(value):
+                return value
+            key = normalized(value)
+            if key in translations:
+                return translations[key]
+            if key in english_values:
+                return english_values[key]
+            if key in invalid_values:
+                return None
+            raise ValueError(
+                f"No English translation configured for {column_name} "
+                f"value: {value!r}"
             )
-        )
+
+        frame[column_name] = frame[column_name].map(translate)
     return frame
+
+
+def replace_numeric_zeros(frame: pd.DataFrame) -> pd.DataFrame:
+    """Replace numeric zero values with ``None`` for SQLite NULL insertion."""
+    return frame.map(
+        lambda value: (
+            None
+            if isinstance(value, Real)
+            and not isinstance(value, bool)
+            and value == 0
+            else value
+        )
+    )
 
 
 def prepare_rows(file_path: Path, sheet_name: str, frame: pd.DataFrame,
@@ -211,4 +256,5 @@ def prepare_rows(file_path: Path, sheet_name: str, frame: pd.DataFrame,
     data.columns = headers
     data = data.loc[:, list(expected_columns)]
     data = translate_values(data)
+    data = replace_numeric_zeros(data)
     return data.astype(object).where(pd.notna(data), None)
