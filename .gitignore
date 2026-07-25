@@ -167,5 +167,4 @@ cython_debug/
 /db/*.sqlite-journal
 /db/*.sqlite-shm
 /db/*.sqlite-wal
-/results/investment_analysis.json
-/results/
+
