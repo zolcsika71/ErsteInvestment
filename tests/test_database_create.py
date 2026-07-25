@@ -16,7 +16,8 @@ from db_creation.database_create import (
     extract_date,
     table_columns,
 )
-from main import DEFAULT_DATABASE, DEFAULT_INPUT_DIR, PROJECT_DIR, rebuild_database
+from main import DEFAULT_DATABASE, DEFAULT_INPUT_DIR, rebuild_database
+from project_config import PROJECT_DIR
 from db_creation.excel_processing import replace_numeric_zeros, translate_values
 from db_creation.text_normalization import normalized_key
 

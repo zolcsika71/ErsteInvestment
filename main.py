@@ -6,13 +6,18 @@ import argparse
 import sys
 from pathlib import Path
 
-from db_creation import DatabaseError, import_file
 from analysis import AnalysisError, run_analysis, write_report
-from project_config import DATABASE_PATH, INPUT_DIR, PROJECT_DIR
-
+from db_creation import DatabaseError, import_file
+from project_config import DATABASE_PATH, INPUT_DIR
 
 DEFAULT_INPUT_DIR = INPUT_DIR
 DEFAULT_DATABASE = DATABASE_PATH
+
+
+def _require_xls_files(paths: list[Path], input_dir: Path) -> list[Path]:
+    if not paths:
+        raise FileNotFoundError(f"No .xls files found in: {input_dir}")
+    return paths
 
 
 def find_xls_files(input_dir: Path) -> list[Path]:
@@ -20,14 +25,14 @@ def find_xls_files(input_dir: Path) -> list[Path]:
     input_dir = input_dir.expanduser().resolve()
     if not input_dir.is_dir():
         raise FileNotFoundError(f"Input directory not found: {input_dir}")
-    if files := sorted(
-        path
-        for path in input_dir.iterdir()
-        if path.is_file() and path.suffix.casefold() == ".xls"
-    ):
-        return files
-    else:
-        raise FileNotFoundError(f"No .xls files found in: {input_dir}")
+    return _require_xls_files(
+        sorted(
+            path
+            for path in input_dir.iterdir()
+            if path.is_file() and path.suffix.casefold() == ".xls"
+        ),
+        input_dir,
+    )
 
 
 def import_directory(input_dir: Path, database_path: Path) -> tuple[int, int]:
