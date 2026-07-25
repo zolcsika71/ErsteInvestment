@@ -214,13 +214,13 @@ poetry run python export_analysis_excel.py --help
 Important analysis options:
 
 | Option | Default | Purpose |
-|---|---:|---|
+| --- | --- | --- |
 | `--risk-profile` | `balanced` | Risk penalty and asset-class limits |
 | `--top` | `10` | Number of ranked investments |
 | `--allocation-candidates` | `12` | Top candidates considered by optimizer |
 | `--max-allocation` | `20` | Maximum percentage in one investment |
-| `--analysis-output` | none | Optional JSON output path |
-| `--explain` | disabled | Request an OpenAI explanation |
+| `--analysis-output` | `none` | Optional JSON output path |
+| `--explain` | `disabled` | Request an OpenAI explanation |
 | `--ai-model` | `gpt-5.6-terra` | Model used for explanation |
 
 ## Code structure
