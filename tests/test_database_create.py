@@ -84,8 +84,8 @@ class DatabaseCreateTests(unittest.TestCase):
             translate_values(source)
 
     def test_default_project_paths(self) -> None:
-        self.assertEqual(DEFAULT_INPUT_DIR, PROJECT_DIR / "model_portfolios_xls")
-        self.assertEqual(DEFAULT_DATABASE, PROJECT_DIR / "db" / "model_portfolio.sqlite")
+        self.assertEqual(DEFAULT_INPUT_DIR, PROJECT_DIR / "model_portfolios_shortlist_xls")
+        self.assertEqual(DEFAULT_DATABASE, PROJECT_DIR / "db" / "shortlist.sqlite")
 
     def test_duplicate_detection_uses_model_portfolios(self) -> None:
         with closing(sqlite3.connect(":memory:")) as connection:

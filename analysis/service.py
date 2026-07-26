@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import replace
+from datetime import date, datetime
 from pathlib import Path
 
 from .types import (
@@ -33,7 +34,7 @@ from .model import (
     rank_investments,
     train_and_predict,
 )
-from .openai_explainer import explain_with_openai
+from .openai_explainer import explain_with_openai, select_best_portfolio_with_openai
 from .portfolio import optimize_allocations, rank_portfolios
 from project_config import ENV_PATH
 
@@ -49,6 +50,24 @@ ANALYSIS_WARNINGS = (
     "Transaction costs, taxes, liquidity, and external macro data are not modeled.",
     "This output is research and not personalized financial advice.",
 )
+
+
+def _json_safe_value(value: object) -> object:
+    """Convert pandas/Python scalar values into strict-JSON values."""
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    if hasattr(value, "item"):
+        # Convert NumPy scalar values such as float64 and int64.
+        return value.item()
+    return value
+
+
+def _json_safe_records(records: list[dict[str, object]]) -> list[dict[str, object]]:
+    """Return asset records without pandas timestamps or NumPy scalars."""
+    return [
+        {key: _json_safe_value(value) for key, value in record.items()}
+        for record in records
+    ]
 
 
 def run_analysis(
@@ -69,12 +88,61 @@ def run_analysis(
     raw = load_portfolio_data(database_path)
     snapshots = collapse_investment_snapshots(raw)
     predictions, diagnostics = train_and_predict(snapshots)
+    portfolios = rank_portfolios(raw, predictions, risk_profile)
+    if not portfolios:
+        raise AnalysisError("No eligible portfolios were found")
+
+    # The local ranking still computes the same candidate metrics. When AI is
+    # enabled, OpenAI selects among those candidates using preservation-first
+    # priorities; it cannot create or modify portfolio metrics.
+    if explain:
+        selection = select_best_portfolio_with_openai(
+            [
+                {
+                    "portfolio_name": item.portfolio_name,
+                    "expected_return": item.expected_return,
+                    "expected_volatility": item.expected_volatility,
+                    "concentration": item.concentration,
+                    "score": item.score,
+                    "coverage": item.coverage,
+                }
+                for item in portfolios
+            ],
+            model,
+        )
+        selected_index = next(
+            index
+            for index, item in enumerate(portfolios)
+            if item.portfolio_name == selection
+        )
+        portfolios = [portfolios[selected_index], *portfolios[:selected_index],
+                      *portfolios[selected_index + 1:]]
+
+    best_portfolio = portfolios[0]
+    latest = raw[raw["Snapshot Date"] == raw["Snapshot Date"].max()]
+    best_assets = latest[
+        latest["Portfolio Name"] == best_portfolio.portfolio_name
+    ].copy()
+    best_assets = best_assets.merge(
+        predictions.loc[:, ["ISIN", "Predicted Return", "Risk Score"]],
+        on="ISIN",
+        how="left",
+    )
+    asset_coverage = float(best_assets["Predicted Return"].notna().mean())
+    # Convert missing numeric values to JSON null instead of NaN, because the
+    # export intentionally uses strict JSON (allow_nan=False).
+    assets = _json_safe_records(
+        best_assets.astype(object)
+        .where(best_assets.notna(), None)
+        .to_dict(orient="records")
+    )
+
     report = AnalysisReport(
         as_of_date=diagnostics.latest_date,
         risk_profile=risk_profile,
         diagnostics=diagnostics,
         investments=rank_investments(predictions, top_investments),
-        portfolios=rank_portfolios(raw, predictions, risk_profile),
+        portfolios=portfolios,
         allocations=optimize_allocations(
             snapshots,
             predictions,
@@ -83,6 +151,18 @@ def run_analysis(
             maximum_allocation,
         ),
         warnings=list(ANALYSIS_WARNINGS),
+        best_portfolio={
+            key: value for key, value in {
+                "portfolio_name": best_portfolio.portfolio_name,
+                "expected_return": best_portfolio.expected_return,
+                "expected_volatility": best_portfolio.expected_volatility,
+                "concentration": best_portfolio.concentration,
+                "score": best_portfolio.score,
+                "coverage": best_portfolio.coverage,
+                "asset_coverage": asset_coverage,
+            }.items()
+        },
+        assets=assets,
     )
     if explain:
         report = replace(
@@ -93,9 +173,22 @@ def run_analysis(
 
 
 def write_report(report: AnalysisReport, output_path: Path | None) -> str:
-    """Serialize a report, optionally writing it to a JSON file."""
+    """Write only the selected portfolio and its assets to JSON."""
+    if report.best_portfolio is None:
+        raise AnalysisError("Analysis report does not contain a best portfolio")
+
+    # Keep the JSON aligned with the Excel input. Ranked alternatives,
+    # optimizer candidates, diagnostics, and warnings are intentionally not
+    # exported because they are unrelated to the selected portfolio summary.
+    export = {
+        "as_of_date": report.as_of_date,
+        "risk_profile": report.risk_profile,
+        "portfolio": report.best_portfolio,
+        "assets": report.assets,
+        "explanation": report.explanation,
+    }
     content = json.dumps(
-        report.to_dict(),
+        export,
         indent=2,
         ensure_ascii=False,
         allow_nan=False,

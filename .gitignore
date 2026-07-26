@@ -160,7 +160,7 @@ cython_debug/
 .idea/
 
 # Local source data
-/model_portfolios_xls/
+/model_portfolios_shortlist_xls/
 
 # Generated databases and reports
 /db/*.sqlite

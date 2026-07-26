@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import math
+import json
+from urllib.parse import quote
+from urllib.request import Request, urlopen
 from dataclasses import asdict
 from typing import TypedDict
 
@@ -21,6 +24,142 @@ from .types import (
     PortfolioRecommendation,
     RiskProfile,
 )
+
+
+def fetch_external_market_metrics(
+    tickers: list[str],
+    timeout: int = 10,
+) -> pd.DataFrame:
+    """Fetch recent Yahoo Finance prices and calculate short-term metrics.
+
+    ``tickers`` must contain explicit Yahoo Finance symbols such as ``VWCE.DE``.
+    The endpoint returns daily chart data; no ticker is inferred from an ISIN.
+    """
+    records: list[dict[str, float | str]] = []
+    for ticker in sorted({ticker.strip().upper() for ticker in tickers if ticker.strip()}):
+        url = (
+            "https://query1.finance.yahoo.com/v8/finance/chart/"
+            f"{quote(ticker)}?range=1y&interval=1d&events=history"
+        )
+        request = Request(url, headers={"User-Agent": "ErsteInvestment/1.0"})
+        try:
+            with urlopen(request, timeout=timeout) as response:
+                payload = json.load(response)
+            result = payload["chart"]["result"][0]
+            closes = [
+                float(value)
+                for value in result["indicators"]["quote"][0]["close"]
+                if value is not None
+            ]
+        except (OSError, KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError):
+            continue
+        if len(closes) < 20:
+            continue
+
+        returns = [closes[index] / closes[index - 1] - 1 for index in range(1, len(closes))]
+        peak = closes[0]
+        drawdowns: list[float] = []
+        for close in closes:
+            peak = max(peak, close)
+            drawdowns.append(close / peak - 1)
+        records.append({
+            "Ticker": ticker,
+            "External 1Y Return": closes[-1] / closes[0] - 1,
+            "External Volatility": (sum(value * value for value in returns) / len(returns)) ** 0.5,
+            "External Maximum Drawdown": min(drawdowns),
+        })
+    return pd.DataFrame.from_records(records)
+
+
+def merge_external_market_metrics(
+    frame: pd.DataFrame,
+) -> pd.DataFrame:
+    """Merge external metrics into a frame containing a ``Ticker`` column."""
+    if "Ticker" not in frame.columns:
+        raise ValueError("External market data requires a Ticker column")
+    external = fetch_external_market_metrics(frame["Ticker"].dropna().astype(str).tolist())
+    return frame.merge(external, on="Ticker", how="left")
+
+
+def rank_short_term_capital_preservation(
+    raw_frame: pd.DataFrame,
+    use_external_market_data: bool = True,
+) -> list[PortfolioRecommendation]:
+    """Rank portfolios for short-term capital preservation.
+
+    This ranking uses only the latest snapshot in ``raw_frame``. Returns are
+    rewarded, while volatility, downside risk, drawdown, and concentration are
+    penalized. Missing short-term metrics reduce coverage and therefore reduce
+    confidence in a portfolio. No external market or web data is consulted.
+    """
+    if use_external_market_data and "Ticker" in raw_frame.columns:
+        raw_frame = merge_external_market_metrics(raw_frame)
+
+    latest_date = raw_frame["Snapshot Date"].max()
+    latest = raw_frame[raw_frame["Snapshot Date"] == latest_date].copy()
+    results: list[PortfolioRecommendation] = []
+
+    for portfolio_name, group in latest.groupby("Portfolio Name"):
+        allocation = pd.to_numeric(group["Allocation (%)"], errors="coerce")
+        total = allocation[allocation > 0].sum()
+        if not np.isfinite(total) or total <= 0:
+            continue
+
+        weights = allocation.clip(lower=0) / total
+
+        def weighted_metric(column: str) -> float | None:
+            values = pd.to_numeric(group[column], errors="coerce")
+            valid = values.notna() & weights.notna()
+            if not valid.any():
+                return None
+            return float((values[valid] * weights[valid]).sum())
+
+        ytd = weighted_metric("YTD")
+        one_year = weighted_metric("1 Year")
+        volatility = weighted_metric("1Y Volatility")
+        downside = weighted_metric("Downside Risk")
+        drawdown = weighted_metric("Maximum Drawdown")
+        if "External Volatility" in group:
+            volatility = weighted_metric("External Volatility") or volatility
+        if "External Maximum Drawdown" in group:
+            drawdown = weighted_metric("External Maximum Drawdown") or drawdown
+        coverage = float(
+            group["1 Year"].notna().sum() / max(len(group), 1)
+        )
+        concentration = float(np.square(weights.fillna(0)).sum())
+
+        # Missing metrics contribute zero to the score but lower coverage.
+        expected_return = float(np.nanmean([value for value in (ytd, one_year)
+                                            if value is not None])) if any(
+            value is not None for value in (ytd, one_year)
+        ) else 0.0
+        expected_volatility = volatility or 0.0
+        preservation_penalty = (
+            0.45 * expected_volatility
+            + 0.30 * (downside or 0.0)
+            + 0.20 * (drawdown or 0.0)
+            + 0.05 * concentration
+        )
+        score = expected_return - preservation_penalty
+
+        results.append(PortfolioRecommendation(
+            rank=0,
+            portfolio_name=str(portfolio_name),
+            expected_return=expected_return,
+            expected_volatility=expected_volatility,
+            concentration=concentration,
+            score=score,
+            coverage=coverage,
+        ))
+
+    results.sort(key=lambda item: item.score, reverse=True)
+    return [
+        PortfolioRecommendation(
+            rank=index,
+            **{key: value for key, value in asdict(item).items() if key != "rank"},
+        )
+        for index, item in enumerate(results, start=1)
+    ]
 
 
 # noinspection SpellCheckingInspection

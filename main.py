@@ -1,4 +1,4 @@
-"""Import /project/model_portfolios_xls/*.xls into the project database."""
+"""Import shortlist workbooks into db/shortlist.sqlite by default."""
 
 from __future__ import annotations
 
@@ -8,7 +8,8 @@ from pathlib import Path
 
 from analysis import AnalysisError, run_analysis, write_report
 from db_creation import DatabaseError, import_file
-from project_config import DATABASE_PATH, INPUT_DIR
+from export.export_analysis_excel import export_analysis_to_excel
+from project_config import ANALYSIS_XLSX_PATH, DATABASE_PATH, INPUT_DIR
 
 DEFAULT_INPUT_DIR = INPUT_DIR
 DEFAULT_DATABASE = DATABASE_PATH
@@ -51,6 +52,11 @@ def rebuild_database(database_path: Path) -> None:
     database_path = database_path.expanduser().resolve()
     if database_path.exists():
         database_path.unlink()
+
+
+def ensure_results_directory() -> None:
+    """Create the default results directory if it does not exist."""
+    ANALYSIS_XLSX_PATH.expanduser().resolve().parent.mkdir(parents=True, exist_ok=True)
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -119,16 +125,7 @@ def main() -> int:
             rebuild_database(arguments.database)
         imported, skipped = import_directory(arguments.input_dir, arguments.database)
         if arguments.analyze:
-            report = run_analysis(
-                arguments.database,
-                risk_profile=arguments.risk_profile,
-                top_investments=arguments.top,
-                allocation_candidates=arguments.allocation_candidates,
-                maximum_allocation=arguments.max_allocation / 100,
-                explain=arguments.explain,
-                model=arguments.ai_model,
-            )
-            print(write_report(report, arguments.analysis_output))
+            generate_analysis_outputs(arguments)
     except (
         FileNotFoundError,
         RuntimeError,
@@ -140,6 +137,24 @@ def main() -> int:
         return 1
     print(f"Done. Imported {imported} file(s), skipped {skipped} already imported file(s).")
     return 0
+
+
+def generate_analysis_outputs(arguments: argparse.Namespace) -> None:
+    """Run analysis and create the JSON and Excel output files."""
+    ensure_results_directory()
+    report = run_analysis(
+        arguments.database,
+        risk_profile=arguments.risk_profile,
+        top_investments=arguments.top,
+        allocation_candidates=arguments.allocation_candidates,
+        maximum_allocation=arguments.max_allocation / 100,
+        explain=arguments.explain,
+        model=arguments.ai_model,
+    )
+    json_output = arguments.analysis_output or ANALYSIS_XLSX_PATH.with_suffix(".json")
+    print(write_report(report, json_output))
+    excel_output = export_analysis_to_excel(json_output, ANALYSIS_XLSX_PATH)
+    print(f"Created Excel report: {excel_output}")
 
 
 if __name__ == "__main__":

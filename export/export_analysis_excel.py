@@ -39,10 +39,7 @@ def _load_report(json_path: Path) -> dict[str, Any]:
         report = json.loads(json_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
         raise ExcelExportError(f"Could not read valid JSON from {json_path}") from error
-    required = {
-        "as_of_date", "risk_profile", "diagnostics", "investments",
-        "portfolios", "allocations", "warnings", "explanation",
-    }
+    required = {"as_of_date", "risk_profile", "portfolio", "assets", "explanation"}
     if missing := sorted(required.difference(report)):
         raise ExcelExportError(f"Analysis JSON is missing: {', '.join(missing)}")
     return report
@@ -162,19 +159,23 @@ def _write_summary(workbook: Workbook, report: dict[str, Any]) -> None:
     worksheet["A1"].alignment = Alignment(horizontal="center")
     worksheet.append(["As Of Date", report["as_of_date"]])
     worksheet.append(["Risk Profile", str(report["risk_profile"]).title()])
-    worksheet.append(["Generated Investments", len(report["investments"])])
-    worksheet.append(["Ranked Portfolios", len(report["portfolios"])])
-    worksheet.append(["Allocation Positions", len(report["allocations"])])
+    portfolio = report["portfolio"]
+    worksheet.append(["Portfolio Name", portfolio["portfolio_name"]])
+    worksheet.append(["Assets in the Portfolio", len(report["assets"])])
+    worksheet.append(["Expected Return", portfolio["expected_return"]])
+    worksheet.append(["Expected Volatility", portfolio["expected_volatility"]])
+    worksheet.append(["Concentration", portfolio["concentration"]])
+    worksheet.append(["Score", portfolio["score"]])
+    worksheet.append(["Portfolio Coverage", portfolio["coverage"]])
+    worksheet.append(["Asset Coverage", portfolio["asset_coverage"]])
     worksheet.append([])
-    worksheet.append(["Model Diagnostics", None])
-    worksheet.merge_cells("A8:B8")
-    worksheet["A8"].fill = SECTION_FILL
-    worksheet["A8"].font = Font(bold=True)
-    for key, value in report["diagnostics"].items():
-        worksheet.append([_title(key), value])
+    worksheet.append(["Selection", "Highest-scoring portfolio under the existing criteria"])
     for row in range(2, worksheet.max_row + 1):
         worksheet.cell(row, 1).font = Font(bold=True)
-        if worksheet.cell(row, 1).value == "Validation Mae":
+        if worksheet.cell(row, 1).value in {
+            "Expected Return", "Expected Volatility", "Concentration",
+            "Score", "Portfolio Coverage", "Asset Coverage",
+        }:
             worksheet.cell(row, 2).number_format = "0.00%"
     worksheet.freeze_panes = "A2"
     _fit_columns(worksheet)
@@ -222,38 +223,18 @@ def _write_explanation(
 
 
 def export_analysis_to_excel(json_path: Path, xlsx_path: Path) -> Path:
-    """Create a formatted multi-sheet workbook from an analysis JSON report."""
+    """Create a workbook containing only the best portfolio and its assets."""
     report = _load_report(json_path)
     workbook = Workbook()
     _write_summary(workbook, report)
     _write_records(
         workbook,
-        "Investments",
-        report["investments"],
-        "InvestmentRankings",
-        fractional_percentages={"predicted_return", "risk_score", "model_score"},
-        color_scale_columns={"predicted_return", "model_score"},
+        "Assets",
+        report["assets"],
+        "BestPortfolioAssets",
+        fractional_percentages={"Predicted Return", "Risk Score"},
+        color_scale_columns={"Predicted Return", "Risk Score"},
     )
-    _write_records(
-        workbook,
-        "Portfolios",
-        report["portfolios"],
-        "PortfolioRankings",
-        fractional_percentages={
-            "expected_return", "expected_volatility", "score", "coverage",
-        },
-        color_scale_columns={"expected_return", "score"},
-    )
-    _write_records(
-        workbook,
-        "Allocations",
-        report["allocations"],
-        "RecommendedAllocations",
-        fractional_percentages={"predicted_return", "risk_score"},
-        whole_percentages={"allocation_percent"},
-        color_scale_columns={"allocation_percent", "predicted_return"},
-    )
-    _write_warnings(workbook, report["warnings"])
     _write_explanation(workbook, report["explanation"])
 
     xlsx_path = xlsx_path.expanduser().resolve()

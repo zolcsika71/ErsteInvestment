@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import Any, Final, Literal
 
 
@@ -88,6 +88,10 @@ class AnalysisReport:
     allocations: list[AllocationRecommendation]
     warnings: list[str]
     explanation: dict[str, Any] | None = None
+    # These fields contain the focused export: only the highest-scoring
+    # portfolio and its complete latest-snapshot asset rows.
+    best_portfolio: dict[str, Any] | None = None
+    assets: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-serializable report."""

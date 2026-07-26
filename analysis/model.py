@@ -25,6 +25,10 @@ def load_portfolio_data(database_path: Path) -> pd.DataFrame:
         raise FileNotFoundError(f"Database not found: {database_path}")
     try:
         with sqlite3.connect(database_path) as connection:
+            # The query is intentionally SQLite-specific and runs through the
+            # standard-library sqlite3 connection. The database is selected
+            # at runtime, so the IDE cannot configure a static data source.
+            # noinspection SqlDialectInspection,SqlNoDataSourceInspection,SqlResolve
             frame = pd.read_sql_query("SELECT * FROM model_portfolios", connection)
     except (sqlite3.Error, pd.errors.DatabaseError) as error:
         raise AnalysisError(
@@ -57,8 +61,7 @@ def collapse_investment_snapshots(frame: pd.DataFrame) -> pd.DataFrame:
         "Currency Risk": "first",
         "Sustainability": "first",
         "Allocation (%)": "mean",
-    }
-    aggregations |= {column: "median" for column in NUMERIC_FEATURES}
+    } | {column: "median" for column in NUMERIC_FEATURES}
     return (
         frame.groupby(["Snapshot Date", "ISIN"], as_index=False, dropna=False)
         .agg(aggregations)
@@ -151,7 +154,13 @@ def _validation_masks(
     train: pd.DataFrame,
 ) -> tuple[pd.Series, pd.Series]:
     eligible: list[tuple[pd.Series, pd.Series]] = []
-    for raw_cutoff in sorted(train["Snapshot Date"].unique()):
+    snapshot_dates = pd.Series(
+        pd.to_datetime(train["Snapshot Date"], errors="coerce"),
+        index=train.index,
+    ).dropna().drop_duplicates().sort_values()
+    for raw_cutoff in snapshot_dates:
+        # pandas exposes Series iteration values with an overly broad static
+        # type. The series has already been normalized to datetime values.
         cutoff = pd.Timestamp(raw_cutoff)
         fit = train["Target Date"] < cutoff
         validation = train["Snapshot Date"] >= cutoff

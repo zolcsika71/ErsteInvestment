@@ -29,7 +29,7 @@ poetry install
 ├── analysis/                # Modeling, ranking, optimization, OpenAI explanation
 ├── db_creation/             # Excel processing and SQLite import
 ├── db/                      # Generated SQLite database and analysis JSON
-├── model_portfolios_xls/    # Local source .xls files
+├── model_portfolios_shortlist_xls/ # Local source .xls files
 ├── results/                 # Generated Excel reports
 ├── tests/                   # Pytest suite
 ├── export_analysis_excel.py
@@ -43,8 +43,8 @@ All configured paths are derived from the directory containing
 paths are:
 
 ```text
-/project/model_portfolios_xls
-/project/db/model_portfolio.sqlite
+/project/model_portfolios_shortlist_xls
+/project/db/shortlist.sqlite
 /project/db/investment_analysis.json
 /project/results/investment_analysis.xlsx
 ```
@@ -54,7 +54,7 @@ ignored by Git.
 
 ## Import spreadsheets
 
-Place `.xls` files directly inside `model_portfolios_xls/`, then run:
+Place `.xls` files directly inside `model_portfolios_shortlist_xls/`, then run:
 
 ```bash
 poetry run python main.py
@@ -74,7 +74,7 @@ Import behavior:
 The default database is:
 
 ```text
-db/model_portfolio.sqlite
+db/shortlist.sqlite
 ```
 
 Rebuild the database after schema or translation changes:
@@ -88,7 +88,7 @@ Use custom locations when required:
 ```bash
 poetry run python main.py \
   --input-dir /path/to/xls/files \
-  --database /path/to/model_portfolio.sqlite
+  --database /path/to/shortlist.sqlite
 ```
 
 ## Run quantitative analysis
